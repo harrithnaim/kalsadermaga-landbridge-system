@@ -29,7 +29,13 @@ from edifact_parser import parse_interchange  # noqa: E402
 from allocation import allocate  # noqa: E402
 
 app = Flask(__name__)
-
+@app.route("/", methods=["GET"])
+def index():
+    return jsonify({
+        "service": "Kalsa Dermaga Landbridge API",
+        "status": "running",
+        "endpoints": ["/internal/parse", "/internal/allocate", "/internal/queue", "/partner/ecrl/wagon-plan"],
+    })
 # In-memory store for the prototype. Swap for real persistence (Postgres/SQLite)
 # before this handles anything beyond a demo session.
 _STATE = {"containers": [], "last_plan": None}
