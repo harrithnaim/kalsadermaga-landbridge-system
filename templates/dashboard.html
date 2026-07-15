@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Kalsa Dermaga Landbridge — Dashboard</title>
+  <style>
+    body { background:#10151a; color:#e8edf0; font-family: system-ui, sans-serif; margin:0; padding:24px; }
+    h1 { font-size:20px; margin-bottom:4px; }
+    h2 { font-size:15px; color:#8a99a3; margin-top:32px; }
+    .sub { color:#8a99a3; font-size:13px; margin-bottom:24px; }
+    a.logout { color:#8a99a3; font-size:13px; float:right; }
+    table { width:100%; border-collapse:collapse; margin-top:12px; }
+    th, td { text-align:left; padding:8px; border-bottom:1px solid #2b363d; font-size:13px; }
+    th { color:#8a99a3; font-weight:500; }
+    .hazmat { color:#e5535a; }
+    button { padding:10px 16px; background:#f2a93b; color:#1a1300; border:none; border-radius:4px; font-weight:600; cursor:pointer; margin-right:8px; }
+    button.secondary { background:#20292f; color:#e8edf0; border:1px solid #2b363d; }
+    .empty { color:#8a99a3; font-size:13px; }
+  </style>
+</head>
+<body>
+  <a class="logout" href="{{ url_for('logout') }}">Log out</a>
+  <h1>Landbridge Operator Dashboard</h1>
+  <div class="sub">Kuantan Port → ECRL → Port Klang</div>
+
+  <form method="POST" action="{{ url_for('dashboard_allocate') }}" style="display:inline;">
+    <button type="submit">Run Allocation</button>
+  </form>
+  <form method="POST" action="{{ url_for('dashboard_clear') }}" style="display:inline;" onsubmit="return confirm('Clear the container queue?');">
+    <button type="submit" class="secondary">Clear Queue</button>
+  </form>
+
+  <h2>CONTAINER QUEUE ({{ containers|length }})</h2>
+  {% if containers %}
+  <table>
+    <tr><th>Container ID</th><th>Size</th><th>Weight (kg)</th><th>Hazmat</th><th>Destination</th><th>Booking Ref</th></tr>
+    {% for c in containers %}
+    <tr>
+      <td>{{ c.container_id }}</td>
+      <td>{{ c.size_type }}</td>
+      <td>{{ c.gross_weight_kg }}</td>
+      <td class="{{ 'hazmat' if c.hazmat_flag else '' }}">{{ c.hazmat_class or '-' }}</td>
+      <td>{{ c.destination_station }}</td>
+      <td>{{ c.booking_ref }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="empty">No containers in queue. Parse a COPRAR/CODECO message via /internal/parse to add some.</p>
+  {% endif %}
+
+  <h2>LATEST WAGON PLAN</h2>
+  {% if plan %}
+  <p class="sub">{{ plan.stats.wagon_count }} wagons · {{ plan.stats.loaded_count }} loaded · {{ plan.stats.total_weight_kg }} kg total · {{ plan.stats.utilization_pct }}% utilization</p>
+  {% if plan.violations %}
+    <p class="hazmat">Violations: {{ plan.violations|join(', ') }}</p>
+  {% endif %}
+  <table>
+    <tr><th>Wagon</th><th>Station</th><th>Containers</th><th>Weight (kg)</th></tr>
+    {% for w in plan.wagons %}
+    <tr>
+      <td>{{ w.id }}{% if w.is_buffer %} (buffer){% endif %}</td>
+      <td>{{ w.station_name or w.station or '-' }}</td>
+      <td>{{ w.containers|join(', ') }}</td>
+      <td>{{ w.weight_kg }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="empty">No allocation run yet.</p>
+  {% endif %}
+</body>
+</html>

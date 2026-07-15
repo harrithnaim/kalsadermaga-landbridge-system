@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Kalsa Dermaga Landbridge — Login</title>
+  <style>
+    body { background:#10151a; color:#e8edf0; font-family: system-ui, sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; margin:0; }
+    form { background:#1a2127; padding:32px; border-radius:8px; width:280px; }
+    h1 { font-size:18px; margin-bottom:20px; }
+    label { display:block; font-size:13px; margin-bottom:6px; color:#8a99a3; }
+    input { width:100%; padding:8px; margin-bottom:16px; border-radius:4px; border:1px solid #2b363d; background:#20292f; color:#e8edf0; box-sizing:border-box; }
+    button { width:100%; padding:10px; background:#f2a93b; color:#1a1300; border:none; border-radius:4px; font-weight:600; cursor:pointer; }
+    .error { color:#e5535a; font-size:13px; margin-bottom:12px; }
+  </style>
+</head>
+<body>
+  <form method="POST">
+    <h1>Kalsa Dermaga Landbridge</h1>
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+    <label>Username</label>
+    <input type="text" name="username" required autofocus>
+    <label>Password</label>
+    <input type="password" name="password" required>
+    <button type="submit">Log in</button>
+  </form>
+</body>
+</html>

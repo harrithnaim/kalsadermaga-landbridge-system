@@ -21,7 +21,7 @@ Then:
 
 import sys
 from pathlib import Path
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template, redirect, url_for, session
 from db import init_db, save_containers, get_containers, clear_containers, save_plan, get_last_plan
 
 # edifact_parser/ lives alongside this backend/ folder — see repo layout note in README.
@@ -31,6 +31,51 @@ from allocation import allocate  # noqa: E402
 
 app = Flask(__name__)
 init_db()
+app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-me")
+DASHBOARD_USERNAME = os.environ.get("DASHBOARD_USERNAME", "admin")
+DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "changeme")
+
+def login_required(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not session.get("logged_in"):
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return wrapper
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    if request.method == "POST":
+        if request.form.get("username") == DASHBOARD_USERNAME and request.form.get("password") == DASHBOARD_PASSWORD:
+            session["logged_in"] = True
+            return redirect(url_for("dashboard"))
+        error = "Invalid username or password"
+    return render_template("login.html", error=error)
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    return render_template("dashboard.html", containers=get_containers(), plan=get_last_plan())
+
+@app.route("/dashboard/allocate", methods=["POST"])
+@login_required
+def dashboard_allocate():
+    containers = get_containers()
+    if containers:
+        save_plan(allocate(containers))
+    return redirect(url_for("dashboard"))
+
+@app.route("/dashboard/clear", methods=["POST"])
+@login_required
+def dashboard_clear():
+    clear_containers()
+    return redirect(url_for("dashboard"))
 import os
 from functools import wraps
 
