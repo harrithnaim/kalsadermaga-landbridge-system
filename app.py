@@ -136,7 +136,7 @@ def partner_wagon_plan():
     """The only thing ECRL's system ever sees: the latest wagon plan, stripped
     of container identity and all commercial data. Swap this for real auth
     (API key / OAuth client) before this leaves prototype stage."""
-plan = get_last_plan()
+    plan = get_last_plan()
     if not plan:
         return jsonify({"error": "no allocation run yet"}), 404
     return jsonify(_to_partner_view(plan))
