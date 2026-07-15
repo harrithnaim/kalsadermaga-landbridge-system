@@ -20,9 +20,10 @@ Then:
 """
 
 import sys
+import os
+from functools import wraps
 from pathlib import Path
 from flask import Flask, request, jsonify, render_template, redirect, url_for, session
-import os
 from db import init_db, save_containers, get_containers, clear_containers, save_plan, get_last_plan
 
 # edifact_parser/ lives alongside this backend/ folder — see repo layout note in README.
@@ -77,8 +78,6 @@ def dashboard_allocate():
 def dashboard_clear():
     clear_containers()
     return redirect(url_for("dashboard"))
-
-from functools import wraps
 
 API_KEY = os.environ.get("API_KEY")
 
