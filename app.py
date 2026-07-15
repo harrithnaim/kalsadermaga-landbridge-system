@@ -29,6 +29,20 @@ from edifact_parser import parse_interchange  # noqa: E402
 from allocation import allocate  # noqa: E402
 
 app = Flask(__name__)
+import os
+from functools import wraps
+
+API_KEY = os.environ.get("API_KEY")
+
+def require_api_key(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not API_KEY:
+            return jsonify({"error": "server misconfigured: API_KEY not set"}), 500
+        if request.headers.get("X-API-Key") != API_KEY:
+            return jsonify({"error": "unauthorized"}), 401
+        return f(*args, **kwargs)
+    return wrapper
 @app.route("/", methods=["GET"])
 def index():
     return jsonify({
@@ -46,6 +60,7 @@ _STATE = {"containers": [], "last_plan": None}
 # ---------------------------------------------------------------------------
 
 @app.route("/internal/parse", methods=["POST"])
+@require_api_key
 def internal_parse():
     """Accepts raw EDIFACT text (COPRAR or CODECO), returns parsed canonical data."""
     raw = request.get_data(as_text=True)
@@ -68,6 +83,7 @@ def internal_parse():
 
 
 @app.route("/internal/allocate", methods=["POST"])
+@require_api_key
 def internal_allocate():
     """Runs the wagon allocation engine against the current container queue
     (or an explicit list passed in the request body)."""
@@ -82,11 +98,13 @@ def internal_allocate():
 
 
 @app.route("/internal/queue", methods=["GET"])
+@require_api_key
 def internal_queue():
     return jsonify({"containers": _STATE["containers"]})
 
 
 @app.route("/internal/queue", methods=["DELETE"])
+@require_api_key
 def internal_clear_queue():
     _STATE["containers"] = []
     return jsonify({"status": "cleared"})
@@ -117,6 +135,7 @@ def _to_partner_view(plan: dict) -> dict:
 
 
 @app.route("/partner/ecrl/wagon-plan", methods=["GET"])
+@require_api_key
 def partner_wagon_plan():
     """The only thing ECRL's system ever sees: the latest wagon plan, stripped
     of container identity and all commercial data. Swap this for real auth
