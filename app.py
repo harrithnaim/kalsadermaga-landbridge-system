@@ -22,6 +22,7 @@ Then:
 import sys
 from pathlib import Path
 from flask import Flask, request, jsonify
+from db import init_db, save_containers, get_containers, clear_containers, save_plan, get_last_plan
 
 # edifact_parser/ lives alongside this backend/ folder — see repo layout note in README.
 sys.path.append(str(Path(__file__).parent.parent))
@@ -29,6 +30,7 @@ from edifact_parser import parse_interchange  # noqa: E402
 from allocation import allocate  # noqa: E402
 
 app = Flask(__name__)
+init_db()
 import os
 from functools import wraps
 
@@ -62,51 +64,45 @@ _STATE = {"containers": [], "last_plan": None}
 @app.route("/internal/parse", methods=["POST"])
 @require_api_key
 def internal_parse():
-    """Accepts raw EDIFACT text (COPRAR or CODECO), returns parsed canonical data."""
     raw = request.get_data(as_text=True)
     if not raw:
         return jsonify({"error": "empty request body"}), 400
-
     result = parse_interchange(raw)
     containers = [c.as_dict() for c in result.containers]
     events = [e.as_dict() for e in result.events]
-
     if containers:
-        _STATE["containers"].extend(containers)
-
+        save_containers(containers)
     return jsonify({
         "containers": containers,
         "events": events,
         "warnings": result.warnings,
-        "containers_in_queue": len(_STATE["containers"]),
+        "containers_in_queue": len(get_containers()),
     })
+
 
 
 @app.route("/internal/allocate", methods=["POST"])
 @require_api_key
 def internal_allocate():
-    """Runs the wagon allocation engine against the current container queue
-    (or an explicit list passed in the request body)."""
     body = request.get_json(silent=True) or {}
-    containers = body.get("containers") or _STATE["containers"]
+    containers = body.get("containers") or get_containers()
     if not containers:
         return jsonify({"error": "no containers to allocate — call /internal/parse first, or pass 'containers'"}), 400
-
     plan = allocate(containers)
-    _STATE["last_plan"] = plan
+    save_plan(plan)
     return jsonify(plan)
 
 
 @app.route("/internal/queue", methods=["GET"])
 @require_api_key
 def internal_queue():
-    return jsonify({"containers": _STATE["containers"]})
+    return jsonify({"containers": get_containers()})
 
 
 @app.route("/internal/queue", methods=["DELETE"])
 @require_api_key
 def internal_clear_queue():
-    _STATE["containers"] = []
+    clear_containers()
     return jsonify({"status": "cleared"})
 
 
@@ -140,9 +136,10 @@ def partner_wagon_plan():
     """The only thing ECRL's system ever sees: the latest wagon plan, stripped
     of container identity and all commercial data. Swap this for real auth
     (API key / OAuth client) before this leaves prototype stage."""
-    if not _STATE["last_plan"]:
+plan = get_last_plan()
+    if not plan:
         return jsonify({"error": "no allocation run yet"}), 404
-    return jsonify(_to_partner_view(_STATE["last_plan"]))
+    return jsonify(_to_partner_view(plan))
 
 
 if __name__ == "__main__":
