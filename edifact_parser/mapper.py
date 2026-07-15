@@ -175,6 +175,94 @@ def parse_codeco(segments: List[Segment], warnings: List[str]) -> List[Milestone
     return events
 
 
+def _split_stowage_loops(segments: List[Segment]) -> Tuple[List[Segment], List[List[Segment]]]:
+    """BAPLIE loops start with a stowage-location LOC (qualifier '147'), which
+    comes BEFORE the EQD for that container -- opposite order from COPRAR/CODECO,
+    so this needs its own splitter rather than reusing _split_equipment_loops."""
+    header, loops = [], []
+    current = None
+    for seg in segments:
+        if seg.tag == "LOC" and seg.value(0, 0) == "147":
+            if current is not None:
+                loops.append(current)
+            current = [seg]
+        elif current is not None:
+            current.append(seg)
+        else:
+            header.append(seg)
+    if current is not None:
+        loops.append(current)
+    return header, loops
+
+
+def _parse_bay_row_tier(code):
+    """Fixed-width BBRRTT stowage code -> (bay, row, tier), e.g. '020486' -> (2, 4, 86).
+    Returns (None, None, None) if the code is missing or malformed."""
+    if not code or len(code) < 6:
+        return None, None, None
+    try:
+        return int(code[0:2]), int(code[2:4]), int(code[4:6])
+    except ValueError:
+        return None, None, None
+
+
+def parse_baplie(segments: List[Segment], warnings: List[str]) -> List[Container]:
+    header, loops = _split_stowage_loops(segments)
+    ctx = _header_context_coprar(header)  # same header shape (TDT vessel/voyage) as COPRAR
+    containers = []
+
+    for loop in loops:
+        loc_seg = loop[0]
+        bay, row, tier = _parse_bay_row_tier(loc_seg.value(1, 0))
+
+        eqd = next((s for s in loop if s.tag == "EQD"), None)
+        if eqd is None:
+            warnings.append("BAPLIE loop missing EQD segment; skipped")
+            continue
+
+        container = Container(
+            container_id=eqd.value(1, 0, default=""),
+            size_type=eqd.value(2, 0, default=""),
+            full_empty=FULL_EMPTY.get(eqd.value(4, 0), None),
+            vessel_name=ctx["vessel_name"],
+            voyage_ref=ctx["voyage_ref"],
+            source_message_type="BAPLIE",
+            bay=bay, row=row, tier=tier,
+        )
+        if not container.container_id:
+            warnings.append("EQD segment missing container id in BAPLIE loop; skipped")
+            continue
+
+        for seg in loop:
+            if seg.tag == "MEA":
+                unit_and_value = seg.element(2, default=[])
+                if len(unit_and_value) >= 2:
+                    try:
+                        container.gross_weight_kg = float(unit_and_value[1])
+                    except ValueError:
+                        warnings.append(f"{container.container_id}: unparseable weight value")
+            elif seg.tag == "DGS":
+                container.hazmat_flag = True
+                container.hazmat_class = seg.value(1, 0)
+            elif seg.tag == "LOC":
+                qualifier = seg.value(0, 0)
+                if qualifier == "9":
+                    container.loading_port = seg.value(1, 0)
+                elif qualifier == "11":
+                    container.discharge_port = seg.value(1, 0)
+            elif seg.tag == "RFF":
+                ref = RFF_QUALIFIERS.get(seg.value(0, 0))
+                ref_value = seg.value(0, 1)
+                if ref == "booking_ref":
+                    container.booking_ref = ref_value
+                elif ref == "carrier_bl_ref":
+                    container.carrier_bl_ref = ref_value
+
+        containers.append(container)
+
+    return containers
+
+
 def parse_interchange(raw: str) -> ParseResult:
     """Top-level entry point: parse a raw EDIFACT interchange (possibly
     containing multiple COPRAR/CODECO messages) into the canonical model."""
@@ -193,6 +281,8 @@ def parse_interchange(raw: str) -> ParseResult:
             result.containers.extend(parse_coprar(msg_segments, result.warnings))
         elif msg_type == "CODECO":
             result.events.extend(parse_codeco(msg_segments, result.warnings))
+        elif msg_type == "BAPLIE":
+            result.containers.extend(parse_baplie(msg_segments, result.warnings))
         else:
             result.warnings.append(f"Unsupported message type '{msg_type}' -- skipped")
 

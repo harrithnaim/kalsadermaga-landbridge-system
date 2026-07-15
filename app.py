@@ -1,41 +1,56 @@
 """
 Landbridge operator backend — prototype.
 
-Two-tier API reflecting the "Kalsa Dermaga stays the operator" model:
-
-  /internal/*      Full access. EDI intake, parsed containers, allocation runs,
-                    everything. This is Kalsa Dermaga's own operator platform.
-
-  /partner/ecrl/*   Deliberately narrow. ECRL only ever sees wagon plans
-                    (container id, weight, hazmat flag, station, wagon
-                    assignment) — never rates, shipper identity, or booking
-                    commercial terms. This boundary is enforced here, not
-                    just documented.
-
-Run:
-    pip install -r requirements.txt
-    python app.py
-Then:
-    curl -X POST http://localhost:5000/internal/parse -H "Content-Type: text/plain" --data-binary @../edifact_parser/samples/sample_coprar.edi
+Two-tier API reflecting the "Kalsa Dermaga stays the operator" model, plus a
+browser dashboard for human operators (separate session login, not the API key).
 """
 
-import sys
 import os
-from functools import wraps
+import sys
 from pathlib import Path
-from flask import Flask, request, jsonify, render_template, redirect, url_for, session
-from db import init_db, save_containers, get_containers, clear_containers, save_plan, get_last_plan
+from collections import defaultdict
+from functools import wraps
 
-# edifact_parser/ lives alongside this backend/ folder — see repo layout note in README.
+from flask import (
+    Flask, request, jsonify, render_template, redirect, url_for,
+    session, flash, get_flashed_messages, Response,
+)
+
 sys.path.append(str(Path(__file__).parent.parent))
 from edifact_parser import parse_interchange  # noqa: E402
-from allocation import allocate  # noqa: E402
+from allocation import allocate, ROUTE  # noqa: E402
+from db import init_db, save_containers, get_containers, clear_containers, save_plan, get_last_plan  # noqa: E402
+from edi_generator import generate_wagon_status_edi  # noqa: E402
 
 app = Flask(__name__)
 init_db()
+
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-me")
 DASHBOARD_USERNAME = os.environ.get("DASHBOARD_USERNAME", "admin")
 DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "changeme")
+API_KEY = os.environ.get("API_KEY")
+
+PORT_COLOR_PALETTE = ["#46b9ae", "#f2a93b", "#8f82d9", "#5c90ee", "#e36c86", "#7fd48f"]
+
+
+def _port_colors(ports):
+    return {p: PORT_COLOR_PALETTE[i % len(PORT_COLOR_PALETTE)] for i, p in enumerate(ports)}
+
+
+# ---------------------------------------------------------------------------
+# AUTH — two separate mechanisms: API key (programmatic) vs session login (browser)
+# ---------------------------------------------------------------------------
+
+def require_api_key(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not API_KEY:
+            return jsonify({"error": "server misconfigured: API_KEY not set"}), 500
+        if request.headers.get("X-API-Key") != API_KEY:
+            return jsonify({"error": "unauthorized"}), 401
+        return f(*args, **kwargs)
+    return wrapper
+
 
 def login_required(f):
     @wraps(f)
@@ -44,6 +59,7 @@ def login_required(f):
             return redirect(url_for("login"))
         return f(*args, **kwargs)
     return wrapper
+
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -55,55 +71,24 @@ def login():
         error = "Invalid username or password"
     return render_template("login.html", error=error)
 
+
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect(url_for("login"))
 
-@app.route("/dashboard")
-@login_required
-def dashboard():
-    return render_template("dashboard.html", containers=get_containers(), plan=get_last_plan())
 
-@app.route("/dashboard/allocate", methods=["POST"])
-@login_required
-def dashboard_allocate():
-    containers = get_containers()
-    if containers:
-        save_plan(allocate(containers))
-    return redirect(url_for("dashboard"))
-
-@app.route("/dashboard/clear", methods=["POST"])
-@login_required
-def dashboard_clear():
-    clear_containers()
-    return redirect(url_for("dashboard"))
-
-API_KEY = os.environ.get("API_KEY")
-
-def require_api_key(f):
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        if not API_KEY:
-            return jsonify({"error": "server misconfigured: API_KEY not set"}), 500
-        if request.headers.get("X-API-Key") != API_KEY:
-            return jsonify({"error": "unauthorized"}), 401
-        return f(*args, **kwargs)
-    return wrapper
 @app.route("/", methods=["GET"])
 def index():
     return jsonify({
         "service": "Kalsa Dermaga Landbridge API",
         "status": "running",
-        "endpoints": ["/internal/parse", "/internal/allocate", "/internal/queue", "/partner/ecrl/wagon-plan"],
+        "endpoints": ["/internal/parse", "/internal/allocate", "/internal/queue", "/partner/ecrl/wagon-plan", "/dashboard"],
     })
-# In-memory store for the prototype. Swap for real persistence (Postgres/SQLite)
-# before this handles anything beyond a demo session.
-_STATE = {"containers": [], "last_plan": None}
 
 
 # ---------------------------------------------------------------------------
-# INTERNAL — Kalsa Dermaga operator platform. Full data, no scoping.
+# INTERNAL API — Kalsa Dermaga operator platform. Full data, API-key protected.
 # ---------------------------------------------------------------------------
 
 @app.route("/internal/parse", methods=["POST"])
@@ -123,7 +108,6 @@ def internal_parse():
         "warnings": result.warnings,
         "containers_in_queue": len(get_containers()),
     })
-
 
 
 @app.route("/internal/allocate", methods=["POST"])
@@ -152,12 +136,10 @@ def internal_clear_queue():
 
 
 # ---------------------------------------------------------------------------
-# PARTNER (ECRL) — narrow, read-only, operational data only.
+# PARTNER (ECRL) — narrow, read-only, operational data only. API-key protected.
 # ---------------------------------------------------------------------------
 
 def _to_partner_view(plan: dict) -> dict:
-    """Strip a full allocation plan down to what ECRL is allowed to see.
-    No booking refs, no B/L numbers, no commercial data of any kind."""
     return {
         "wagons": [
             {
@@ -178,13 +160,129 @@ def _to_partner_view(plan: dict) -> dict:
 @app.route("/partner/ecrl/wagon-plan", methods=["GET"])
 @require_api_key
 def partner_wagon_plan():
-    """The only thing ECRL's system ever sees: the latest wagon plan, stripped
-    of container identity and all commercial data. Swap this for real auth
-    (API key / OAuth client) before this leaves prototype stage."""
     plan = get_last_plan()
     if not plan:
         return jsonify({"error": "no allocation run yet"}), 404
     return jsonify(_to_partner_view(plan))
+
+
+# ---------------------------------------------------------------------------
+# DASHBOARD — browser UI for human operators. Session-login protected.
+# ---------------------------------------------------------------------------
+
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    return render_template("dashboard.html", containers=get_containers(), plan=get_last_plan())
+
+
+@app.route("/dashboard/allocate", methods=["POST"])
+@login_required
+def dashboard_allocate():
+    containers = get_containers()
+    if containers:
+        save_plan(allocate(containers))
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/dashboard/clear", methods=["POST"])
+@login_required
+def dashboard_clear():
+    clear_containers()
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/dashboard/upload", methods=["POST"])
+@login_required
+def dashboard_upload():
+    file = request.files.get("edi_file")
+    if not file or file.filename == "":
+        flash("No file selected.")
+        return redirect(url_for("dashboard"))
+    raw = file.read().decode("utf-8", errors="replace")
+    result = parse_interchange(raw)
+    containers = [c.as_dict() for c in result.containers]
+    if containers:
+        save_containers(containers)
+    msg = f"Parsed {len(containers)} containers from {file.filename}."
+    if result.warnings:
+        msg += " Warnings: " + "; ".join(result.warnings)
+    flash(msg)
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/dashboard/generate-edi")
+@login_required
+def dashboard_generate_edi():
+    plan = get_last_plan()
+    if not plan:
+        flash("No allocation plan to generate EDI from yet — run allocation first.")
+        return redirect(url_for("dashboard"))
+    edi_text = generate_wagon_status_edi(plan)
+    return Response(
+        edi_text,
+        mimetype="text/plain",
+        headers={"Content-Disposition": "attachment; filename=wagon_status.edi"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# VESSEL BAY PLAN — view containers by their ship position (from BAPLIE),
+# filter by discharge port, and assign an ECRL station to queue them for
+# wagon allocation.
+# ---------------------------------------------------------------------------
+
+@app.route("/dashboard/vessel")
+@login_required
+def vessel_bayplan():
+    containers = get_containers()
+
+    discharge_ports = sorted({c.get("discharge_port") for c in containers if c.get("discharge_port")})
+    port_colors = _port_colors(discharge_ports)
+    selected_port = request.args.get("discharge_port", discharge_ports[0] if discharge_ports else "")
+    filtered = [c for c in containers if c.get("discharge_port") == selected_port]
+
+    bays = defaultdict(list)
+    for c in containers:
+        if c.get("bay") is not None:
+            bays[c["bay"]].append(c)
+    for bay_num in bays:
+        bays[bay_num].sort(key=lambda c: c.get("tier") or 0, reverse=True)
+    bays = dict(sorted(bays.items()))
+
+    stations = [s for s in ROUTE if not s.get("origin")]
+
+    return render_template(
+        "vessel.html",
+        bays=bays,
+        port_colors=port_colors,
+        discharge_ports=discharge_ports,
+        selected_port=selected_port,
+        filtered=filtered,
+        stations=stations,
+    )
+
+
+@app.route("/dashboard/vessel/assign", methods=["POST"])
+@login_required
+def vessel_assign():
+    containers = get_containers()
+    by_id = {c["container_id"]: c for c in containers}
+    updated = []
+    for key, value in request.form.items():
+        if key.startswith("station__") and value:
+            container_id = key[len("station__"):]
+            if container_id in by_id:
+                c = by_id[container_id]
+                c["destination_station"] = value
+                updated.append(c)
+    if updated:
+        save_containers(updated)
+        flash(f"Assigned {len(updated)} containers to ECRL stations — ready for wagon allocation.")
+    else:
+        flash("No stations were selected.")
+    selected_port = request.form.get("discharge_port", "")
+    return redirect(url_for("vessel_bayplan", discharge_port=selected_port))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Kalsa Dermaga Landbridge{% endblock %}</title>
+  <style>
+    :root {
+      --bg: #10151a;
+      --panel: #1a2127;
+      --panel-alt: #20292f;
+      --border: #2b363d;
+      --text: #e8edf0;
+      --text-dim: #8a99a3;
+      --amber: #f2a93b;
+      --teal: #46b9ae;
+      --red: #e5535a;
+      --radius: 4px;
+      --space-2: 8px;
+      --space-3: 16px;
+      --space-4: 24px;
+      --space-5: 32px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0; padding: 0;
+    }
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+      flex-wrap: wrap; gap: var(--space-2);
+    }
+    .brand { font-weight: 700; font-size: 15px; color: var(--text); line-height: 1.3; }
+    .brand span { color: var(--text-dim); font-weight: 400; font-size: 12px; display: block; }
+    nav { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+    nav a { color: var(--text-dim); text-decoration: none; font-size: 13px; padding: 6px 10px; border-radius: var(--radius); }
+    nav a.active { color: var(--text); background: var(--panel-alt); }
+    nav a:hover { color: var(--text); }
+    main { padding: var(--space-4); max-width: 1100px; margin: 0 auto; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    h2 { font-size: 13px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; margin-top: var(--space-5); }
+    .sub { color: var(--text-dim); font-size: 13px; margin-bottom: var(--space-4); }
+    table { width: 100%; border-collapse: collapse; margin-top: var(--space-2); }
+    th, td { text-align: left; padding: var(--space-2); border-bottom: 1px solid var(--border); font-size: 13px; }
+    th { color: var(--text-dim); font-weight: 500; }
+    .hazmat { color: var(--red); }
+    .empty { color: var(--text-dim); font-size: 13px; }
+    button, .btn {
+      padding: 10px 16px; background: var(--amber); color: #1a1300;
+      border: none; border-radius: var(--radius); font-weight: 600;
+      cursor: pointer; font-size: 13px; display: inline-flex; align-items: center; gap: 6px;
+    }
+    button.secondary, .btn.secondary { background: var(--panel-alt); color: var(--text); border: 1px solid var(--border); }
+    button:disabled { opacity: 0.65; cursor: wait; }
+    .flash { background: var(--panel-alt); border-left: 3px solid var(--amber); padding: 12px; margin-bottom: var(--space-4); font-size: 13px; border-radius: var(--radius); }
+    select, input[type=file], input[type=text], input[type=password] {
+      background: var(--panel-alt); color: var(--text); border: 1px solid var(--border);
+      padding: 8px; border-radius: var(--radius); font-size: 13px;
+    }
+    .table-scroll { overflow-x: auto; }
+    .spinner {
+      display: inline-block; width: 11px; height: 11px;
+      border: 2px solid rgba(0,0,0,0.3); border-top-color: #1a1300;
+      border-radius: 50%; animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 640px) {
+      main { padding: var(--space-3); }
+      .topbar { flex-direction: column; align-items: flex-start; }
+      .table-scroll table, .table-scroll thead, .table-scroll tbody, .table-scroll tr { display: block; width: 100%; }
+      .table-scroll thead { display: none; }
+      .table-scroll tr { border-bottom: 1px solid var(--border); padding: var(--space-2) 0; }
+      .table-scroll td { border: none; padding: 4px 0; display: flex; justify-content: space-between; gap: var(--space-3); }
+      .table-scroll td::before { content: attr(data-label); color: var(--text-dim); font-size: 11px; }
+    }
+  </style>
+  {% block extra_style %}{% endblock %}
+</head>
+<body>
+  {% if session.get('logged_in') %}
+  <div class="topbar">
+    <div class="brand">KALSA DERMAGA<span>Landbridge Operator System</span></div>
+    <nav>
+      <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' else '' }}">Wagon Plan</a>
+      <a href="{{ url_for('vessel_bayplan') }}" class="{{ 'active' if request.endpoint in ['vessel_bayplan', 'vessel_assign'] else '' }}">Vessel Bay Plan</a>
+      <a href="{{ url_for('logout') }}">Log out</a>
+    </nav>
+  </div>
+  {% endif %}
+  <main>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="flash">{% for m in messages %}<p style="margin:4px 0;">{{ m }}</p>{% endfor %}</div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+  <script>
+    // Loading feedback: disable the submit button and show a spinner while the
+    // server processes the request, so actions never feel frozen or unresponsive.
+    document.querySelectorAll('form').forEach(function (form) {
+      form.addEventListener('submit', function () {
+        var btn = form.querySelector('button[type="submit"]');
+        if (btn && !btn.disabled) {
+          btn.disabled = true;
+          btn.innerHTML = '<span class="spinner"></span> Processing…';
+        }
+      });
+    });
+  </script>
+  {% block extra_script %}{% endblock %}
+</body>
+</html>

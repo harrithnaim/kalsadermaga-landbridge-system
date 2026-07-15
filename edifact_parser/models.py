@@ -18,12 +18,16 @@ class Container:
     hazmat_class: Optional[str] = None
     destination_station: Optional[str] = None   # location code, mapped to Station later
     discharge_port: Optional[str] = None
+    loading_port: Optional[str] = None
     booking_ref: Optional[str] = None
     carrier_bl_ref: Optional[str] = None
     vessel_name: Optional[str] = None
     voyage_ref: Optional[str] = None
     full_empty: Optional[str] = None    # "full" / "empty"
-    source_message_type: Optional[str] = None   # e.g. "COPRAR"
+    source_message_type: Optional[str] = None   # e.g. "COPRAR", "BAPLIE"
+    bay: Optional[int] = None           # vessel stowage position, from BAPLIE
+    row: Optional[int] = None
+    tier: Optional[int] = None
 
     def as_dict(self):
         return self.__dict__.copy()
