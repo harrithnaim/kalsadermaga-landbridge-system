@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Kalsa Dermaga — Landbridge Operator System{% endblock %}
+{% block extra_style %}
+<style>
+  .hero { display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; min-height:80vh; padding: 24px; }
+  .hero-title { font-size:28px; font-weight:700; letter-spacing:0.02em; margin-bottom:8px; }
+  .hero-sub { color:var(--text-dim); font-size:14px; margin-bottom:32px; max-width:480px; line-height:1.6; }
+  .hero-route { color:var(--teal); font-size:13px; margin-bottom:40px; letter-spacing:0.03em; }
+  .hero-btn { padding:14px 32px; font-size:14px; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="hero">
+  <div class="hero-title">KALSA DERMAGA</div>
+  <div class="hero-route">KUANTAN PORT → ECRL → PORT KLANG</div>
+  <div class="hero-sub">Single-bill landbridge operator system — EDI intake, vessel bay planning, ECRL wagon allocation, and billing in one place.</div>
+  <a href="{{ url_for('login') }}"><button type="button" class="hero-btn">Log In</button></a>
+</div>
+{% endblock %}

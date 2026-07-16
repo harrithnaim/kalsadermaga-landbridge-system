@@ -114,11 +114,7 @@ def logout():
 
 @app.route("/", methods=["GET"])
 def index():
-    return jsonify({
-        "service": "Kalsa Dermaga Landbridge API",
-        "status": "running",
-        "endpoints": ["/internal/parse", "/internal/allocate", "/internal/queue", "/partner/ecrl/wagon-plan", "/dashboard"],
-    })
+    return render_template("welcome.html")
 
 
 # ---------------------------------------------------------------------------
