@@ -1,5 +1,19 @@
 {% extends "base.html" %}
 {% block title %}Wagon Plan — Kalsa Dermaga Landbridge{% endblock %}
+{% block extra_style %}
+<style>
+  .legend { display:flex; gap:16px; font-size:12px; margin-bottom:16px; flex-wrap:wrap; }
+  .swatch { display:inline-block; width:10px; height:10px; margin-right:6px; border-radius:2px; }
+  .train { display:flex; gap:6px; overflow-x:auto; padding-bottom:16px; align-items:flex-end; }
+  .loco { flex-shrink:0; width:50px; height:60px; background:var(--panel-alt); border:1px solid var(--border); border-radius:4px 12px 4px 4px; display:flex; align-items:center; justify-content:center; font-size:9px; color:var(--text-dim); writing-mode:vertical-rl; }
+  .wagon-visual { flex-shrink:0; width:74px; }
+  .wagon-visual .body { height:60px; border-radius:3px; padding:4px; display:flex; flex-direction:column; justify-content:space-between; border:1px solid var(--border); }
+  .wagon-visual .wid { font-size:9px; color:var(--text-dim); text-align:center; margin-top:4px; }
+  .wagon-visual .boxes { display:flex; gap:2px; flex-wrap:wrap; }
+  .wagon-visual .box { flex:1; min-width:14px; height:20px; border-radius:2px; font-size:7px; color:#0d1114; text-align:center; font-weight:700; }
+  .wagon-visual .buffer-car { background:transparent; border:1px dashed var(--border); }
+</style>
+{% endblock %}
 {% block content %}
 <h1>Landbridge Operator Dashboard</h1>
 <div class="sub">Kuantan Port → ECRL → Port Klang</div>
@@ -47,6 +61,34 @@
 {% if plan.violations %}
   <p class="hazmat">Violations: {{ plan.violations|join(', ') }}</p>
 {% endif %}
+
+<div class="legend">
+  {% for station, color in station_colors.items() %}
+  <span><span class="swatch" style="background:{{ color }};"></span>{{ station }}</span>
+  {% endfor %}
+</div>
+<div class="sub" style="margin-top:-8px; margin-bottom:8px;">LOCOMOTIVE → REAR (rear wagons uncouple first)</div>
+<div class="train">
+  <div class="loco">LOCO</div>
+  {% for w in plan.wagons %}
+  <div class="wagon-visual">
+    {% if w.is_buffer %}
+    <div class="body buffer-car"></div>
+    <div class="wid">buffer</div>
+    {% else %}
+    <div class="body" style="background:var(--panel); border-color:{{ station_colors.get(w.station, 'var(--border)') }};">
+      <div class="boxes">
+        {% for cid in w.containers %}
+        <div class="box" style="background:{{ station_colors.get(w.station, '#555') }};" title="{{ cid }}">{{ cid[-3:] }}</div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="wid">{{ w.id }}</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
 <div class="table-scroll">
 <table>
   <thead><tr><th>Wagon</th><th>Station</th><th>Containers</th><th>Weight (kg)</th></tr></thead>

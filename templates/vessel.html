@@ -4,32 +4,62 @@
 <style>
   .legend { display:flex; gap:16px; font-size:12px; margin-bottom:20px; flex-wrap:wrap; }
   .swatch { display:inline-block; width:10px; height:10px; margin-right:6px; border-radius:2px; }
-  .grid { display:flex; gap:10px; overflow-x:auto; padding-bottom:16px; border-bottom:1px solid var(--border); margin-bottom:8px; }
-  .bay-col { display:flex; flex-direction:column; gap:4px; min-width:92px; }
-  .bay-label { font-size:11px; color:var(--text-dim); text-align:center; margin-bottom:4px; }
-  .box { color:#0d1114; font-size:10px; padding:5px 4px; border-radius:2px; text-align:center; font-weight:600; }
+  .bay-plan { display:flex; gap:20px; overflow-x:auto; padding-bottom:16px; margin-bottom:8px; }
+  .bay-block { flex-shrink:0; }
+  .bay-title { font-size:11px; color:var(--text-dim); text-align:center; margin-bottom:6px; letter-spacing:0.05em; }
+  .bay-grid { border-collapse: collapse; }
+  .bay-grid td { padding: 2px; }
+  .tier-label { font-size:9px; color:var(--text-dim); padding-right:6px !important; text-align:right; white-space:nowrap; }
+  .row-label { font-size:9px; color:var(--text-dim); text-align:center; padding-bottom:4px !important; }
+  .cell { width:34px; height:28px; border-radius:2px; font-size:9px; color:#0d1114; text-align:center; font-weight:700; }
+  .cell.empty-slot { background: var(--panel-alt); border: 1px dashed var(--border); }
+  .deck-divider td { border-top: 2px solid var(--amber); padding-top: 6px !important; }
+  .deck-label { font-size:8px; color:var(--amber); letter-spacing:0.08em; padding-top:4px !important; }
 </style>
 {% endblock %}
 {% block content %}
 <h1>Vessel Bay Plan</h1>
-<div class="sub">Position data from BAPLIE · select a discharge port to plan the landbridge leg</div>
+<div class="sub">Row × tier cross-section from BAPLIE · gold line marks the deck level</div>
 
-{% if bays %}
+{% if bay_grids %}
 <div class="legend">
   {% for port, color in port_colors.items() %}
   <span><span class="swatch" style="background:{{ color }};"></span>{{ port }}</span>
   {% endfor %}
 </div>
-<div class="grid">
-  {% for bay_num, boxes in bays.items() %}
-  <div class="bay-col">
-    <div class="bay-label">BAY {{ '%02d'|format(bay_num) }}</div>
-    {% for c in boxes %}
-    <div class="box" style="background:{{ port_colors.get(c.discharge_port, '#555') }};"
-         title="{{ c.container_id }} · discharge: {{ c.discharge_port }}{% if c.hazmat_flag %} · HAZMAT{% endif %}">
-      {{ c.container_id[-4:] }}{% if c.hazmat_flag %} ⚠{% endif %}
-    </div>
-    {% endfor %}
+
+<div class="bay-plan">
+  {% for bay_num, grid in bay_grids.items() %}
+  <div class="bay-block">
+    <div class="bay-title">BAY {{ '%02d'|format(bay_num) }}</div>
+    <table class="bay-grid">
+      <tr>
+        <td></td>
+        {% for row in grid.row_labels %}
+        <td class="row-label">{{ '%02d'|format(row) }}</td>
+        {% endfor %}
+      </tr>
+      {% for grid_row in grid.grid_rows %}
+      {% if grid_row.divider_before %}
+      <tr class="deck-divider"><td colspan="{{ grid.row_labels|length + 1 }}" class="deck-label">— DECK —</td></tr>
+      {% endif %}
+      <tr>
+        <td class="tier-label">{{ '%02d'|format(grid_row.tier) }}</td>
+        {% for c in grid_row.cells %}
+        <td>
+          {% if c %}
+          <div class="cell" style="background:{{ port_colors.get(c.discharge_port, '#555') }};"
+               title="{{ c.container_id }} · discharge: {{ c.discharge_port }}{% if c.hazmat_flag %} · HAZMAT{% endif %}">
+            {{ c.container_id[-3:] }}{% if c.hazmat_flag %}⚠{% endif %}
+          </div>
+          {% else %}
+          <div class="cell empty-slot"></div>
+          {% endif %}
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </table>
   </div>
   {% endfor %}
 </div>

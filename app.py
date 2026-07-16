@@ -45,6 +45,32 @@ def _port_colors(ports):
     return {p: PORT_COLOR_PALETTE[i % len(PORT_COLOR_PALETTE)] for i, p in enumerate(ports)}
 
 
+def _build_bay_grid(containers):
+    """Build a proper row x tier cross-section per bay, matching how real
+    stowage planning software (e.g. MACS3/StowMan) displays a bay -- not just
+    a stacked column. Inserts a divider between under-deck (tier < 80) and
+    on-deck (tier >= 80) rows, per standard bay plan tier numbering."""
+    bays_raw = defaultdict(lambda: defaultdict(dict))  # bay -> tier -> row -> container
+    for c in containers:
+        if c.get("bay") is not None and c.get("row") is not None and c.get("tier") is not None:
+            bays_raw[c["bay"]][c["tier"]][c["row"]] = c
+
+    bay_grids = {}
+    for bay_num, tiers_dict in sorted(bays_raw.items()):
+        row_labels = sorted({r for row_map in tiers_dict.values() for r in row_map.keys()})
+        tiers_sorted = sorted(tiers_dict.keys(), reverse=True)
+        grid_rows = []
+        prev_on_deck = None
+        for tier in tiers_sorted:
+            on_deck = tier >= 80
+            divider = prev_on_deck is not None and on_deck != prev_on_deck
+            cells = [tiers_dict[tier].get(r) for r in row_labels]
+            grid_rows.append({"tier": tier, "cells": cells, "divider_before": divider})
+            prev_on_deck = on_deck
+        bay_grids[bay_num] = {"row_labels": row_labels, "grid_rows": grid_rows}
+    return bay_grids
+
+
 # ---------------------------------------------------------------------------
 # AUTH — two separate mechanisms: API key (programmatic) vs session login (browser)
 # ---------------------------------------------------------------------------
@@ -181,7 +207,12 @@ def partner_wagon_plan():
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    return render_template("dashboard.html", containers=get_containers(), plan=get_last_plan())
+    plan = get_last_plan()
+    station_colors = {}
+    if plan:
+        station_ids = [w["station"] for w in plan["wagons"] if not w["is_buffer"]]
+        station_colors = _port_colors(sorted(set(station_ids)))
+    return render_template("dashboard.html", containers=get_containers(), plan=plan, station_colors=station_colors)
 
 
 @app.route("/dashboard/allocate", methods=["POST"])
@@ -250,19 +281,12 @@ def vessel_bayplan():
     selected_port = request.args.get("discharge_port", discharge_ports[0] if discharge_ports else "")
     filtered = [c for c in containers if c.get("discharge_port") == selected_port]
 
-    bays = defaultdict(list)
-    for c in containers:
-        if c.get("bay") is not None:
-            bays[c["bay"]].append(c)
-    for bay_num in bays:
-        bays[bay_num].sort(key=lambda c: c.get("tier") or 0, reverse=True)
-    bays = dict(sorted(bays.items()))
-
+    bay_grids = _build_bay_grid(containers)
     stations = [s for s in ROUTE if not s.get("origin")]
 
     return render_template(
         "vessel.html",
-        bays=bays,
+        bay_grids=bay_grids,
         port_colors=port_colors,
         discharge_ports=discharge_ports,
         selected_port=selected_port,
