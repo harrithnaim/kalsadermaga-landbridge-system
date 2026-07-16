@@ -7,6 +7,7 @@ browser dashboard for human operators (separate session login, not the API key).
 
 import os
 import sys
+import datetime
 from pathlib import Path
 from collections import defaultdict
 from functools import wraps
@@ -19,8 +20,15 @@ from flask import (
 sys.path.append(str(Path(__file__).parent.parent))
 from edifact_parser import parse_interchange  # noqa: E402
 from allocation import allocate, ROUTE  # noqa: E402
-from db import init_db, save_containers, get_containers, clear_containers, save_plan, get_last_plan  # noqa: E402
+from db import (  # noqa: E402
+    init_db, save_containers, get_containers, clear_containers,
+    save_plan, get_last_plan, save_job, get_jobs, get_job,
+)
 from edi_generator import generate_wagon_status_edi  # noqa: E402
+from rates import (  # noqa: E402
+    build_job, PARTNER_COST_RATES, HAZMAT_COST_SURCHARGE,
+    CLIENT_SELL_RATES, CLIENT_HAZMAT_SURCHARGE, CURRENCY,
+)
 
 app = Flask(__name__)
 init_db()
@@ -283,6 +291,55 @@ def vessel_assign():
         flash("No stations were selected.")
     selected_port = request.form.get("discharge_port", "")
     return redirect(url_for("vessel_bayplan", discharge_port=selected_port))
+
+
+# ---------------------------------------------------------------------------
+# BILLING — rate card, job creation, invoice generation. All rates in
+# rates.py are placeholders; see that file's header before using for real.
+# ---------------------------------------------------------------------------
+
+@app.route("/dashboard/billing")
+@login_required
+def billing():
+    return render_template(
+        "billing.html",
+        containers=get_containers(),
+        jobs=get_jobs(),
+        partner_rates=PARTNER_COST_RATES,
+        hazmat_cost=HAZMAT_COST_SURCHARGE,
+        client_rates=CLIENT_SELL_RATES,
+        hazmat_sell=CLIENT_HAZMAT_SURCHARGE,
+        currency=CURRENCY,
+    )
+
+
+@app.route("/dashboard/billing/create", methods=["POST"])
+@login_required
+def billing_create():
+    client_name = request.form.get("client_name", "").strip()
+    selected_ids = request.form.getlist("container_ids")
+    if not client_name or not selected_ids:
+        flash("Enter a client name and select at least one container.")
+        return redirect(url_for("billing"))
+    containers = [c for c in get_containers() if c["container_id"] in selected_ids]
+    job_ref = "JOB-" + datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+    job = build_job(containers, client_name, job_ref)
+    save_job(job)
+    # Deliberately no margin/cost figures here -- this message is shown on the
+    # very next page, which is the client-facing invoice. Margin stays visible
+    # only on the internal Billing page's job list.
+    flash(f"Created {job_ref} for {client_name} — {len(containers)} containers.")
+    return redirect(url_for("invoice_view", job_ref=job_ref))
+
+
+@app.route("/dashboard/billing/invoice/<job_ref>")
+@login_required
+def invoice_view(job_ref):
+    job = get_job(job_ref)
+    if not job:
+        flash("Job not found.")
+        return redirect(url_for("billing"))
+    return render_template("invoice.html", job=job)
 
 
 if __name__ == "__main__":

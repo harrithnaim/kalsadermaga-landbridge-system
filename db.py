@@ -25,7 +25,41 @@ def init_db():
                     data JSONB NOT NULL
                 )
             """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS jobs (
+                    id SERIAL PRIMARY KEY,
+                    job_ref TEXT UNIQUE NOT NULL,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    data JSONB NOT NULL
+                )
+            """)
         conn.commit()
+
+
+def save_job(job):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO jobs (job_ref, data) VALUES (%s, %s) "
+                "ON CONFLICT (job_ref) DO UPDATE SET data = EXCLUDED.data",
+                (job["job_ref"], json.dumps(job)),
+            )
+        conn.commit()
+
+
+def get_jobs():
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT data FROM jobs ORDER BY id DESC")
+            return [row[0] for row in cur.fetchall()]
+
+
+def get_job(job_ref):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT data FROM jobs WHERE job_ref = %s", (job_ref,))
+            row = cur.fetchone()
+            return row[0] if row else None
 
 
 def save_containers(containers):

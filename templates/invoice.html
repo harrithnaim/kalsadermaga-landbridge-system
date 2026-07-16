@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Invoice {{ job.job_ref }} — Kalsa Dermaga{% endblock %}
+{% block extra_style %}
+<style>
+  .invoice-box { background: var(--panel); border: 1px solid var(--border); padding: 32px; border-radius: 8px; max-width: 720px; margin: 0 auto; }
+  .invoice-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 28px; flex-wrap: wrap; gap: 12px; }
+  .invoice-total { text-align:right; margin-top:20px; font-size:16px; font-weight:700; border-top: 1px solid var(--border); padding-top: 16px; }
+  @media print { .invoice-box { border: none; background: white; color: black; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="no-print" style="margin-bottom:16px;">
+  <a href="{{ url_for('billing') }}"><button type="button" class="secondary">← Back to Billing</button></a>
+  <button type="button" onclick="window.print()">Print / Save as PDF</button>
+</div>
+
+<div class="invoice-box">
+  <div class="invoice-header">
+    <div>
+      <h1 style="margin-bottom:2px;">KALSA DERMAGA</h1>
+      <div class="sub">Landbridge Operator · Kuantan Port → ECRL → Port Klang</div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-weight:700; font-size:15px;">INVOICE</div>
+      <div class="sub">{{ job.job_ref }}</div>
+    </div>
+  </div>
+
+  <p><strong>Bill To:</strong> {{ job.client_name }}</p>
+
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Container ID</th><th>Size</th><th>Hazmat</th><th>Price ({{ job.currency }})</th></tr></thead>
+    <tbody>
+    {% for item in job.line_items %}
+    <tr>
+      <td data-label="Container ID">{{ item.container_id }}</td>
+      <td data-label="Size">{{ item.size_type }}</td>
+      <td data-label="Hazmat">{{ 'Yes' if item.hazmat_flag else '-' }}</td>
+      <td data-label="Price">{{ '%.2f'|format(item.sell_price) }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  <div class="invoice-total">Total: {{ job.currency }} {{ '%.2f'|format(job.total_revenue) }}</div>
+</div>
+{% endblock %}

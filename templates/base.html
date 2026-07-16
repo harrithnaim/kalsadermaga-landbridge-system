@@ -6,14 +6,14 @@
   <title>{% block title %}Kalsa Dermaga Landbridge{% endblock %}</title>
   <style>
     :root {
-      --bg: #d4e4f4;
-      --panel: #1a2127;
-      --panel-alt: #071f2f;
-      --border: #2b363d;
-      --text: #055889;
-      --text-dim: #8a99a3;
+      --bg: #0c1520;
+      --panel: #1b3a57;
+      --panel-alt: #24425f;
+      --border: #32506d;
+      --text: #eef2f5;
+      --text-dim: #9db0c2;
       --amber: #f2a93b;
-      --teal: #46b9ae;
+      --teal: #5b9bd9;
       --red: #e5535a;
       --radius: 4px;
       --space-2: 8px;
@@ -34,7 +34,8 @@
       background: var(--panel);
       flex-wrap: wrap; gap: var(--space-2);
     }
-    .brand { font-weight: 700; font-size: 15px; color: var(--text); line-height: 1.3; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; color: var(--text); line-height: 1.3; }
+    .brand img { height: 30px; width: auto; display: block; }
     .brand span { color: var(--text-dim); font-weight: 400; font-size: 12px; display: block; }
     nav { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
     nav a { color: var(--text-dim); text-decoration: none; font-size: 13px; padding: 6px 10px; border-radius: var(--radius); }
@@ -78,16 +79,25 @@
       .table-scroll td { border: none; padding: 4px 0; display: flex; justify-content: space-between; gap: var(--space-3); }
       .table-scroll td::before { content: attr(data-label); color: var(--text-dim); font-size: 11px; }
     }
+
+    @media print {
+      .topbar, .no-print { display: none !important; }
+      body { background: white; color: black; }
+    }
   </style>
   {% block extra_style %}{% endblock %}
 </head>
 <body>
   {% if session.get('logged_in') %}
   <div class="topbar">
-    <div class="brand">KALSA DERMAGA<span>Landbridge Operator System</span></div>
+    <div class="brand">
+      <img src="{{ url_for('static', filename='logo-icon.png') }}" alt="Kalsa Dermaga">
+      <div>KALSA DERMAGA<span>Landbridge Operator System</span></div>
+    </div>
     <nav>
       <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' else '' }}">Wagon Plan</a>
       <a href="{{ url_for('vessel_bayplan') }}" class="{{ 'active' if request.endpoint in ['vessel_bayplan', 'vessel_assign'] else '' }}">Vessel Bay Plan</a>
+      <a href="{{ url_for('billing') }}" class="{{ 'active' if request.endpoint in ['billing', 'billing_create', 'invoice_view'] else '' }}">Billing</a>
       <a href="{{ url_for('logout') }}">Log out</a>
     </nav>
   </div>
@@ -95,7 +105,7 @@
   <main>
     {% with messages = get_flashed_messages() %}
       {% if messages %}
-        <div class="flash">{% for m in messages %}<p style="margin:4px 0;">{{ m }}</p>{% endfor %}</div>
+        <div class="flash no-print">{% for m in messages %}<p style="margin:4px 0;">{{ m }}</p>{% endfor %}</div>
       {% endif %}
     {% endwith %}
     {% block content %}{% endblock %}

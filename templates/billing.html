@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Billing — Kalsa Dermaga Landbridge{% endblock %}
+{% block content %}
+<h1>Billing &amp; Rates</h1>
+<div class="sub">⚠ Placeholder pricing — replace with real tariff sheets before using for real invoices</div>
+
+<h2>Current Rate Card</h2>
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Leg</th><th>20ft ({{ currency }})</th><th>40ft ({{ currency }})</th><th>Hazmat Surcharge</th></tr></thead>
+  <tbody>
+  {% for leg, rates in partner_rates.items() %}
+  <tr>
+    <td data-label="Leg">{{ leg.replace('_', ' ')|title }} <span class="sub">(cost)</span></td>
+    <td data-label="20ft">{{ '%.2f'|format(rates['20']) }}</td>
+    <td data-label="40ft">{{ '%.2f'|format(rates['40']) }}</td>
+    <td data-label="Hazmat">+{{ '%.2f'|format(hazmat_cost[leg]) }}</td>
+  </tr>
+  {% endfor %}
+  <tr>
+    <td data-label="Leg" style="color:var(--teal); font-weight:600;">Client Sell Price (bundled)</td>
+    <td data-label="20ft">{{ '%.2f'|format(client_rates['20']) }}</td>
+    <td data-label="40ft">{{ '%.2f'|format(client_rates['40']) }}</td>
+    <td data-label="Hazmat">+{{ '%.2f'|format(hazmat_sell) }}</td>
+  </tr>
+  </tbody>
+</table>
+</div>
+<p class="empty">To change these numbers, edit <code>rates.py</code> in your backend folder and redeploy.</p>
+
+<h2>Create New Job / Invoice</h2>
+{% if containers %}
+<form method="POST" action="{{ url_for('billing_create') }}">
+  <label style="font-size:13px; color:var(--text-dim); display:block; margin-bottom:6px;">Client Name</label>
+  <input type="text" name="client_name" required placeholder="e.g. Shipline XYZ" style="margin-bottom:16px; width:280px; max-width:100%;">
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th></th><th>Container ID</th><th>Size</th><th>Hazmat</th><th>Destination</th></tr></thead>
+    <tbody>
+    {% for c in containers %}
+    <tr>
+      <td data-label="Select"><input type="checkbox" name="container_ids" value="{{ c.container_id }}"></td>
+      <td data-label="Container ID">{{ c.container_id }}</td>
+      <td data-label="Size">{{ c.size_type }}</td>
+      <td data-label="Hazmat" class="{{ 'hazmat' if c.hazmat_flag else '' }}">{{ c.hazmat_class or '-' }}</td>
+      <td data-label="Destination">{{ c.destination_station or '—' }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <button type="submit" style="margin-top:16px;">Create Job &amp; Generate Invoice</button>
+</form>
+{% else %}
+<p class="empty">No containers in queue. Upload EDI data from the Wagon Plan page first.</p>
+{% endif %}
+
+<h2>Past Jobs ({{ jobs|length }})</h2>
+{% if jobs %}
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Job Ref</th><th>Client</th><th>Containers</th><th>Revenue</th><th>Cost</th><th>Margin</th><th></th></tr></thead>
+  <tbody>
+  {% for j in jobs %}
+  <tr>
+    <td data-label="Job Ref">{{ j.job_ref }}</td>
+    <td data-label="Client">{{ j.client_name }}</td>
+    <td data-label="Containers">{{ j.line_items|length }}</td>
+    <td data-label="Revenue">{{ j.currency }} {{ '%.2f'|format(j.total_revenue) }}</td>
+    <td data-label="Cost">{{ j.currency }} {{ '%.2f'|format(j.total_cost) }}</td>
+    <td data-label="Margin" style="color:{{ 'var(--teal)' if j.margin >= 0 else 'var(--red)' }};">{{ j.currency }} {{ '%.2f'|format(j.margin) }} ({{ j.margin_pct }}%)</td>
+    <td data-label=""><a href="{{ url_for('invoice_view', job_ref=j.job_ref) }}" style="color:var(--teal);">View Invoice</a></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="empty">No jobs created yet.</p>
+{% endif %}
+{% endblock %}
